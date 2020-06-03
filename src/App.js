@@ -1,26 +1,19 @@
 import React from 'react';
-import logo from './logo.svg';
-import './App.css';
+/*
+Package from aws-amplify-react providing us user authentication out of the box. withAuthenticator is a higher-order
+component that will detect our users authentication state (signed-in or not?) and automatically update the UI 
+accordingly.
+*/
+import { withAuthenticator } from "aws-amplify-react";
 
-function App() {
-  return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
-  );
+class App extends React.Component {
+  render() {
+    return (
+      <div>
+        Hello World
+      </div>
+    );
+  }
 }
 
-export default App;
+export default withAuthenticator(App);
