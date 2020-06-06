@@ -8,13 +8,16 @@ import { withAuthenticator } from "aws-amplify-react";
 import { API, graphqlOperation } from "aws-amplify";
 import { createNote } from "./graphql/mutations";
 import { listNotes } from "./graphql/queries";
+import { deleteNote } from "./graphql/mutations";
+import { updateNote } from "./graphql/mutations";
 
 class App extends React.Component {
   constructor() {
     super();
     this.state = {
       notes : [],
-      note: ""
+      note: "",
+      id: ""
     }
   }
 
@@ -25,36 +28,81 @@ class App extends React.Component {
     } catch(error) {
       console.log("There was an error: " + error.message);
     }
+  }
+  /*
+  1. Set the note state to the value of the item note passed in
+  2. Find the id of the note we're updating in notes array state. 
+  3. With the given note id of the selected message, 
+  */
+  handleNoteClick = noteParam => {
+    console.log(noteParam);
+    const { note, id } = noteParam;
+    this.setState({
+      note: note,
+      id: id
+    })
+  }
 
+  handleDeleteNote = async noteId => {
+    const { notes } = this.state;
+    const input = { id: noteId };
+    try {
+      const result = await API.graphql(graphqlOperation(deleteNote, {input}));
+      const deletedNoteId = result.data.deleteNote.id;
+      const updatedNotes = notes.filter((note) => note.id !== deletedNoteId);
+      this.setState({
+        notes: updatedNotes
+      });
+    } catch(error) {
+      console.log(error);
+    }
   }
 
   handleAddNote = async event => {
     event.preventDefault();
-    const { notes, note }  = this.state;
+    const { notes, note, id } = this.state;
     /* Syntax to create a graphql mutation programatically from our app using AWS amplify API. 
     We need to pass in a reference to the mutation, query, or subscription we want to execute to grapqlOperation.
     We can find the exact syntax of these references using an import statement to import graphql functions pre-written for us
     by Amplify. 
      */
-    const input = {note : note};
-    try {
-      // We'll need to pass in the note state to the graphql mutation in order to store the note in our dynamo db table. 
-      const result = await API.graphql(graphqlOperation(createNote, { input: input}));
-      const newNote = result.data.createNote;
-      const updateNotes = [newNote, ...notes];
-      this.setState (state => ({
-        notes: updateNotes,
-        note: ''
-      }))
-    } catch(error) {
-      console.log("There was an error: "+ error.message);
+    
+    if (id) {
+      try {
+        // We'll need to pass in the note state to the graphql mutation in order to store the note in our dynamo db table. 
+        const result = await API.graphql(graphqlOperation(updateNote, {input : {id: id, note: note}}));
+        const matchingNote = notes.find((aNote) => aNote.id === result.data.updateNote.id);
+        
+        notes[notes.indexOf(matchingNote)] = result.data.updateNote;
+        this.setState({
+          notes: notes
+        })
+      } catch(error) {
+        console.log("There was an error: "+ error);
+      }
+    }
+    else {
+      try {
+        // We'll need to pass in the note state to the graphql mutation in order to store the note in our dynamo db table. 
+        const result = await API.graphql(graphqlOperation(createNote, {input : {note: note}}));
+        const newNote = result.data.createNote;
+        const updateNotes = [newNote, ...notes];
+        this.setState ({
+          notes: updateNotes,
+          note: ''
+        });
+      } catch(error) {
+        console.log("There was an error: "+ error.message);
+      }
     }
   }
+
   handleChangeNote = event => {
     this.setState({
       note : event.target.value
     })
   }
+
   render() {
     const { notes, note } = this.state;
     return (
@@ -77,12 +125,13 @@ class App extends React.Component {
           {
             notes.map(item => (
               <div key={item.id} className="flex items-center">
-                <li 
+                <li
+                onClick={() => this.handleNoteClick(item)} 
                   className="list pa1 f3"
                 >
                   {item.note}
                 </li>
-                <button className="bg-transparent bn f4">
+                <button onClick={() => this.handleDeleteNote(item.id)} className="bg-transparent bn f4">
                 <span>&times;</span>
                 </button>
               </div>
