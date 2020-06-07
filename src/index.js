@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
-import App from './App';
+import App from './AppHooks';
 import * as serviceWorker from './serviceWorker';
 /*
 Amplify configuiration and setup with React (after installing aws-amplify and aws-amplify-react)
