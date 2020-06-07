@@ -1,4 +1,8 @@
-type Note @model {
+# The auth directive here will give our appsync application personalized authorization to their data. 
+# Therefore, when a new user authorizes themselves and logs in, they won't be authorized to see note data from other authorized users. 
+# Even though we didn't declare an owner field for our note type in our dynamo db table, we'll still get an auto-populated field owner 
+# in our dynamo db table that we can look at in the AWS console. 
+type Note @model @auth(rules: [{allow: owner}]) {
   id: ID!
   note: String!
 }

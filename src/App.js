@@ -5,11 +5,14 @@ component that will detect our users authentication state (signed-in or not?) an
 accordingly.
 */
 import { withAuthenticator } from "aws-amplify-react";
-import { API, graphqlOperation } from "aws-amplify";
+import { API, graphqlOperation, Auth } from "aws-amplify";
 import { createNote } from "./graphql/mutations";
 import { listNotes } from "./graphql/queries";
 import { deleteNote } from "./graphql/mutations";
 import { updateNote } from "./graphql/mutations";
+import { onCreateNote } from "./graphql/subscriptions";
+import { onDeleteNote } from "./graphql/subscriptions";
+import { onUpdateNote } from "./graphql/subscriptions";
 
 class App extends React.Component {
   constructor() {
@@ -22,6 +25,65 @@ class App extends React.Component {
   }
 
   async componentDidMount() {
+    this.getNotes();
+    
+    /*
+    Common way of adding subscriptions to a component to improve performance and reduce amount of code logic when updating state in response to
+    mutations. Initializing the subscribe method in the componentDidMount() lifecycle method makes the most sense here beacause once the component
+    has mounted, we'll immediately want to start listening for on create note mutations. 
+    */
+    this.createNotesListener = await API.graphql(graphqlOperation(onCreateNote,
+      { owner: (await Auth.currentAuthenticatedUser()).username })).subscribe({
+      // next is a function which allows us to get any data returned from the subscription. When there's note data, we can get it here in the 
+      // next function. 
+      next: noteData => {
+        console.log(noteData);
+        const newNote = noteData.value.data.onCreateNote;
+        const prevNotes= this.state.notes.filter(note => note.id !== newNote.id);
+        const updatedNotes = [...prevNotes, newNote];
+        this.setState ({
+          notes: updatedNotes
+        });
+      }
+    });
+    this.deleteNoteListener = await API.graphql(graphqlOperation(onDeleteNote,
+      { owner: (await Auth.currentAuthenticatedUser()).username })).subscribe({
+      next: noteData => {
+        const deletedNote = noteData.value.data.onDeleteNote;
+        const updatedNotes = this.state.notes.filter((note) => note.id !== deletedNote.id);
+        this.setState({
+          notes: updatedNotes
+        });
+      }
+    });
+    this.updateNoteListener = await API.graphql(graphqlOperation(onUpdateNote,
+      { owner: (await Auth.currentAuthenticatedUser()).username })).subscribe({
+      next: noteData => {
+        const updatedNote = noteData.value.data.onUpdateNote;
+        const targetIndex = this.state.notes.findIndex(note => note.id === updatedNote.id);
+        const updatedNotes = [
+          ...this.state.notes.slice(0, targetIndex),
+          updatedNote,
+          ...this.state.notes.slice(targetIndex + 1)
+        ]
+        this.setState({
+          notes: updatedNotes,
+          note: "",
+          id: ""
+        })
+      }
+    })
+  }
+
+  // Remove the subscription using the reference to the graphql subscription we initialized in componentDidMount() to avoid memory leaks
+  componentWillUnmount() {
+    this.createNotesListener.unsubscribe();
+    this.deleteNoteListener.unsubscribe();
+    this.updateNoteListener.unsubscribe();
+  }
+
+  getNotes = async () => {
+    
     try {
       const results = await API.graphql(graphqlOperation(listNotes));
       this.setState({ notes : results.data.listNotes.items});
@@ -29,11 +91,7 @@ class App extends React.Component {
       console.log("There was an error: " + error.message);
     }
   }
-  /*
-  1. Set the note state to the value of the item note passed in
-  2. Find the id of the note we're updating in notes array state. 
-  3. With the given note id of the selected message, 
-  */
+  
   handleNoteClick = noteParam => {
     console.log(noteParam);
     const { note, id } = noteParam;
@@ -44,15 +102,10 @@ class App extends React.Component {
   }
 
   handleDeleteNote = async noteId => {
-    const { notes } = this.state;
     const input = { id: noteId };
     try {
-      const result = await API.graphql(graphqlOperation(deleteNote, {input}));
-      const deletedNoteId = result.data.deleteNote.id;
-      const updatedNotes = notes.filter((note) => note.id !== deletedNoteId);
-      this.setState({
-        notes: updatedNotes
-      });
+      await API.graphql(graphqlOperation(deleteNote, {input}));
+      
     } catch(error) {
       console.log(error);
     }
@@ -60,7 +113,7 @@ class App extends React.Component {
 
   handleAddNote = async event => {
     event.preventDefault();
-    const { notes, note, id } = this.state;
+    const { note, id } = this.state;
     /* Syntax to create a graphql mutation programatically from our app using AWS amplify API. 
     We need to pass in a reference to the mutation, query, or subscription we want to execute to grapqlOperation.
     We can find the exact syntax of these references using an import statement to import graphql functions pre-written for us
@@ -70,13 +123,9 @@ class App extends React.Component {
     if (id) {
       try {
         // We'll need to pass in the note state to the graphql mutation in order to store the note in our dynamo db table. 
-        const result = await API.graphql(graphqlOperation(updateNote, {input : {id: id, note: note}}));
-        const matchingNote = notes.find((aNote) => aNote.id === result.data.updateNote.id);
+        await API.graphql(graphqlOperation(updateNote, {input : {id: id, note: note}}));
         
-        notes[notes.indexOf(matchingNote)] = result.data.updateNote;
-        this.setState({
-          notes: notes
-        })
+        //const updatedNote = result.data.updateNote;
       } catch(error) {
         console.log("There was an error: "+ error);
       }
@@ -84,11 +133,9 @@ class App extends React.Component {
     else {
       try {
         // We'll need to pass in the note state to the graphql mutation in order to store the note in our dynamo db table. 
-        const result = await API.graphql(graphqlOperation(createNote, {input : {note: note}}));
-        const newNote = result.data.createNote;
-        const updateNotes = [newNote, ...notes];
+        await API.graphql(graphqlOperation(createNote, {input : {note: note}}));
         this.setState ({
-          notes: updateNotes,
+          
           note: ''
         });
       } catch(error) {
@@ -104,7 +151,7 @@ class App extends React.Component {
   }
 
   render() {
-    const { notes, note } = this.state;
+    const { notes, note, id } = this.state;
     return (
       <div className="flex flex-column items-center justify-center pa3 bg-washed-red">
         <h1 className="code f2-1">Amplify Notetaker</h1>
@@ -117,7 +164,7 @@ class App extends React.Component {
           value={note}
           />
           <button className="pa2 f4" type="submit">
-            Add Note
+            {id ? "Update note" : "Add note"}
           </button>
         </form>
         {/* Notes list */}
